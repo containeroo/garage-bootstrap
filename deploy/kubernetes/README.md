@@ -1,6 +1,6 @@
 # Kubernetes
 
-This example runs garage-bootstrap as a single-replica Deployment. It reconciles once on startup and serves `/healthz` on port 8080 afterward. Garage's **Admin API** must already be available.
+This example runs garage-bootstrap as a single-replica Deployment. It reconciles once on startup and serves `/healthz` on port 8080 afterward. If Garage's **Admin API** is not available yet, bootstrap retries with capped exponential backoff.
 
 ## Deploy
 

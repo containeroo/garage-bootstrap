@@ -42,7 +42,9 @@ func (e *APIError) Error() string {
 }
 
 // Retryable reports whether retrying this error can be useful.
-func (e *APIError) Retryable() bool { return e.Status == http.StatusTooManyRequests || e.Status >= 500 }
+func (e *APIError) Retryable() bool {
+	return e.Status == 0 || e.Status == http.StatusTooManyRequests || e.Status >= 500
+}
 
 // NewClient creates a client from a URL already validated by flags.Parse.
 func NewClient(baseURL *url.URL, token string, timeout time.Duration) *Client {

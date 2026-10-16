@@ -360,7 +360,7 @@ func (r Reconciler) denyBucketKey(ctx context.Context, change grantChange) error
 // retryable reports whether an error can be retried.
 type retryable interface{ Retryable() bool }
 
-// retry retries a transient Admin API call.
+// retry retries a transient Admin API call until context cancellation.
 func retry[Input, Output any](
 	ctx context.Context,
 	operation string,
@@ -368,41 +368,39 @@ func retry[Input, Output any](
 	call func(context.Context, Input) (Output, error),
 ) (Output, error) {
 	var zero Output
-	for attempt := 1; attempt <= 4; attempt++ {
+	for attempt := 1; ; attempt++ {
 		result, err := call(ctx, input)
 		if err == nil {
 			return result, nil
 		}
-		if !isRetryable(err) || attempt == 4 {
+		if !isRetryable(err) {
 			return zero, fmt.Errorf("%s: %w", operation, err)
 		}
 		if err := wait(ctx, attempt); err != nil {
 			return zero, err
 		}
 	}
-	return zero, errors.New("unreachable")
 }
 
-// retryVoid retries a transient Admin API call without a result.
+// retryVoid retries a transient Admin API call until context cancellation.
 func retryVoid[Input any](
 	ctx context.Context,
 	operation string,
 	input Input,
 	call func(context.Context, Input) error,
 ) error {
-	for attempt := 1; attempt <= 4; attempt++ {
+	for attempt := 1; ; attempt++ {
 		err := call(ctx, input)
 		if err == nil {
 			return nil
 		}
-		if !isRetryable(err) || attempt == 4 {
+		if !isRetryable(err) {
 			return fmt.Errorf("%s: %w", operation, err)
 		}
 		if err := wait(ctx, attempt); err != nil {
 			return err
 		}
 	}
-	return errors.New("unreachable")
 }
 
 // isRetryable reports whether err supports retrying.

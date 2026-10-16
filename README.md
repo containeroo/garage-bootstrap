@@ -66,7 +66,7 @@ cd deploy
 docker compose up -d --build
 ```
 
-Garage must already be reachable on the configured Admin API URL. The Compose example uses `http://host.docker.internal:3903`; change the URL in `deploy/compose.yaml` if needed. Health is available at `http://127.0.0.1:8080/healthz`.
+Garage may start after bootstrap. Bootstrap retries transient Admin API failures with capped exponential backoff and exposes health only after reconciliation succeeds. The Compose example uses `http://host.docker.internal:3903`; change the URL in `deploy/compose.yaml` if needed. Health is available at `http://127.0.0.1:8080/healthz`.
 
 ## License
 

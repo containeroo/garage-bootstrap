@@ -127,6 +127,12 @@ func TestClientListKeysPropagatesHTTPError(t *testing.T) {
 	}
 }
 
+func TestAPIErrorRetryable(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, (&APIError{Status: 0}).Retryable())
+}
+
 func TestClientLookupsPropagateOtherErrors(t *testing.T) {
 	t.Parallel()
 
