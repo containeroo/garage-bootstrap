@@ -18,8 +18,6 @@ type Config struct {
 	Users []User `yaml:"users"`
 	// Policies defines reusable permissions for named buckets.
 	Policies []Policy `yaml:"policies"`
-	// Buckets declares buckets managed by this configuration.
-	Buckets []Bucket `yaml:"buckets"`
 }
 
 // User associates a Garage access key with one bootstrap policy.
@@ -48,7 +46,7 @@ func (u User) KeyName() string {
 type Policy struct {
 	// Name identifies the policy in user declarations.
 	Name string `yaml:"name"`
-	// Buckets lists per-bucket permission sets; names must match declared buckets.
+	// Buckets lists per-bucket permission sets and declares the buckets to create.
 	Buckets []PolicyBucket `yaml:"buckets"`
 }
 
@@ -64,13 +62,7 @@ type PolicyBucket struct {
 	Owner bool `yaml:"owner"`
 }
 
-// Bucket declares a Garage bucket by its global alias.
-type Bucket struct {
-	// Name is the global alias.
-	Name string `yaml:"name"`
-}
-
-// Grant is a resolved exact permission set for a user on a managed bucket.
+// Grant is an explicit permission set for a user on a managed bucket.
 type Grant struct {
 	// Bucket identifies the managed bucket.
 	Bucket string
@@ -114,12 +106,7 @@ func Load(path string) (Config, error) {
 
 // Validate checks configuration declarations and their relationships.
 func (c Config) Validate() error {
-	buckets, err := c.validateBuckets()
-	if err != nil {
-		return err
-	}
-
-	policies, err := c.validatePolicies(buckets)
+	policies, err := c.validatePolicies()
 	if err != nil {
 		return err
 	}
@@ -127,29 +114,8 @@ func (c Config) Validate() error {
 	return c.validateUsers(policies)
 }
 
-// validateBuckets checks bucket declarations and returns their names.
-func (c Config) validateBuckets() (map[string]struct{}, error) {
-	buckets := make(map[string]struct{}, len(c.Buckets))
-
-	for i, bucket := range c.Buckets {
-		if bucket.Name == "" {
-			return nil, fmt.Errorf("buckets[%d]: name is required", i)
-		}
-		if !validBucketName(bucket.Name) {
-			return nil, fmt.Errorf("buckets[%d]: invalid bucket name %q", i, bucket.Name)
-		}
-		if _, exists := buckets[bucket.Name]; exists {
-			return nil, fmt.Errorf("buckets[%d]: duplicate name %q", i, bucket.Name)
-		}
-
-		buckets[bucket.Name] = struct{}{}
-	}
-
-	return buckets, nil
-}
-
-// validatePolicies checks policy declarations and their bucket references.
-func (c Config) validatePolicies(buckets map[string]struct{}) (map[string]struct{}, error) {
+// validatePolicies checks policy declarations and their bucket entries.
+func (c Config) validatePolicies() (map[string]struct{}, error) {
 	policies := make(map[string]struct{}, len(c.Policies))
 
 	for i, policy := range c.Policies {
@@ -167,9 +133,6 @@ func (c Config) validatePolicies(buckets map[string]struct{}) (map[string]struct
 			if !validBucketName(bucket.Name) {
 				return nil, fmt.Errorf("policies[%d].buckets[%d]: invalid bucket name %q", i, j, bucket.Name)
 			}
-			if _, exists := buckets[bucket.Name]; !exists {
-				return nil, fmt.Errorf("policies[%d].buckets[%d]: unknown bucket %q", i, j, bucket.Name)
-			}
 			if _, exists := seen[bucket.Name]; exists {
 				return nil, fmt.Errorf("policies[%d].buckets[%d]: duplicate bucket %q", i, j, bucket.Name)
 			}
@@ -183,21 +146,43 @@ func (c Config) validatePolicies(buckets map[string]struct{}) (map[string]struct
 
 // validBucketName reports whether name meets Garage's bucket alias rules.
 func validBucketName(name string) bool {
-	if len(name) < 3 || len(name) > 63 || net.ParseIP(name) != nil {
-		return false
-	}
-	if name[0] == '.' || name[0] == '-' || name[len(name)-1] == '.' || name[len(name)-1] == '-' {
-		return false
-	}
-	if strings.HasPrefix(name, "xn--") || strings.Contains(name, ".xn--") || strings.HasSuffix(name, "-s3alias") {
-		return false
-	}
+	return validBucketNameLength(name) &&
+		net.ParseIP(name) == nil &&
+		validBucketNameBoundary(name) &&
+		!reservedBucketName(name) &&
+		validBucketNameCharacters(name)
+}
+
+// validBucketNameLength reports whether name has a valid Garage alias length.
+func validBucketNameLength(name string) bool {
+	return len(name) >= 3 && len(name) <= 63
+}
+
+// validBucketNameBoundary reports whether name starts and ends with valid characters.
+func validBucketNameBoundary(name string) bool {
+	return name[0] != '.' && name[0] != '-' && name[len(name)-1] != '.' && name[len(name)-1] != '-'
+}
+
+// reservedBucketName reports whether name uses a Garage-reserved prefix or suffix.
+func reservedBucketName(name string) bool {
+	return strings.HasPrefix(name, "xn--") || strings.Contains(name, ".xn--") || strings.HasSuffix(name, "-s3alias")
+}
+
+// validBucketNameCharacters reports whether name contains only valid Garage alias characters.
+func validBucketNameCharacters(name string) bool {
 	for _, character := range name {
-		if character != '.' && character != '-' && (character < 'a' || character > 'z') && (character < '0' || character > '9') {
+		if !validBucketNameCharacter(character) {
 			return false
 		}
 	}
 	return true
+}
+
+// validBucketNameCharacter reports whether character is valid in a Garage bucket alias.
+func validBucketNameCharacter(character rune) bool {
+	return character == '.' || character == '-' ||
+		(character >= 'a' && character <= 'z') ||
+		(character >= '0' && character <= '9')
 }
 
 // validateUsers checks user credentials, uniqueness, and policy references.
@@ -234,25 +219,36 @@ func (c Config) validateUsers(policies map[string]struct{}) error {
 	return nil
 }
 
-// Grants resolves policies into exact permissions for every managed user/bucket pair.
-// Missing bucket entries mean no permissions; unmanaged buckets are left untouched.
+// Buckets returns the unique bucket aliases declared by policies.
+// The policy and bucket declaration order determines the result order.
+func (c Config) Buckets() []string {
+	seen := make(map[string]struct{})
+	buckets := make([]string, 0)
+	for _, policy := range c.Policies {
+		for _, bucket := range policy.Buckets {
+			if _, exists := seen[bucket.Name]; exists {
+				continue
+			}
+			seen[bucket.Name] = struct{}{}
+			buckets = append(buckets, bucket.Name)
+		}
+	}
+	return buckets
+}
+
+// Grants resolves only the permissions explicitly declared by each user's policy.
 // The input slice order determines reconciliation order.
 func (c Config) Grants() []Grant {
-	policies := make(map[string]map[string]PolicyBucket, len(c.Policies))
+	policies := make(map[string][]PolicyBucket, len(c.Policies))
 	for _, policy := range c.Policies {
-		permissions := make(map[string]PolicyBucket, len(policy.Buckets))
-		for _, bucket := range policy.Buckets {
-			permissions[bucket.Name] = bucket
-		}
-		policies[policy.Name] = permissions
+		policies[policy.Name] = policy.Buckets
 	}
 
-	grants := make([]Grant, 0, len(c.Users)*len(c.Buckets))
+	grants := make([]Grant, 0)
 	for _, user := range c.Users {
-		for _, bucket := range c.Buckets {
-			permissions := policies[user.Policy][bucket.Name]
+		for _, permissions := range policies[user.Policy] {
 			grants = append(grants, Grant{
-				Bucket: bucket.Name,
+				Bucket: permissions.Name,
 				User:   user.KeyName(),
 				Read:   permissions.Read,
 				Write:  permissions.Write,

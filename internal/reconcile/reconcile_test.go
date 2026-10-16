@@ -111,26 +111,10 @@ func (f *fakeAPI) AllowBucketKey(_ context.Context, bucketID, keyID string, p ga
 	return nil
 }
 
-func (f *fakeAPI) DenyBucketKey(_ context.Context, bucketID, keyID string, p garage.Permissions) error {
-	f.calls++
-	id := permissionKey{bucketID, keyID}
-	current := f.permissions[id]
-	if p.Read {
-		current.Read = false
-	}
-	if p.Write {
-		current.Write = false
-	}
-	if p.Owner {
-		current.Owner = false
-	}
-	f.permissions[id] = current
-	return nil
-}
-
-func TestRunResolvesSharedPoliciesAndRemovesObsoleteGrants(t *testing.T) {
+func TestRunReconcilesExplicitPolicyGrants(t *testing.T) {
 	t.Parallel()
 	api := newFakeAPI()
+	api.permissions[permissionKey{"bucket-backups", "GKONE"}] = garage.Permissions{Owner: true}
 	api.permissions[permissionKey{"bucket-media", "GKONE"}] = garage.Permissions{Read: true, Write: true, Owner: true}
 	// A bucket absent from the configuration must not be affected.
 	api.permissions[permissionKey{"bucket-unmanaged", "GKONE"}] = garage.Permissions{Read: true, Write: true}
@@ -145,16 +129,15 @@ func TestRunResolvesSharedPoliciesAndRemovesObsoleteGrants(t *testing.T) {
 			{Name: "cnpg", Buckets: []config.PolicyBucket{{Name: "backups", Read: true, Write: true}}},
 			{Name: "reader", Buckets: []config.PolicyBucket{{Name: "backups", Read: true}}},
 		},
-		Buckets: []config.Bucket{{Name: "backups"}, {Name: "media"}},
 	}
 	r := newReconciler(api, cfg)
 	require.NoError(t, r.Run(context.Background()))
 	assert.Equal(t, 2, api.imported)
 	assert.Equal(t, 1, api.created)
-	assert.Equal(t, garage.Permissions{Read: true, Write: true}, api.permissions[permissionKey{"bucket-backups", "GKONE"}])
+	assert.Equal(t, garage.Permissions{Read: true, Write: true, Owner: true}, api.permissions[permissionKey{"bucket-backups", "GKONE"}])
 	assert.Equal(t, garage.Permissions{Read: true, Write: true}, api.permissions[permissionKey{"bucket-backups", "GKTWO"}])
 	assert.Equal(t, garage.Permissions{Read: true}, api.permissions[permissionKey{"bucket-backups", "generated-readonly"}])
-	assert.Equal(t, garage.Permissions{}, api.permissions[permissionKey{"bucket-media", "GKONE"}])
+	assert.Equal(t, garage.Permissions{Read: true, Write: true, Owner: true}, api.permissions[permissionKey{"bucket-media", "GKONE"}])
 	assert.Equal(t, garage.Permissions{Read: true, Write: true}, api.permissions[permissionKey{"bucket-unmanaged", "GKONE"}])
 
 	// Starting the reconciler again must not create or import more access keys.
@@ -171,8 +154,7 @@ func TestRunLogsSkippedResources(t *testing.T) {
 	api.buckets["backups"] = &garage.Bucket{ID: "bucket-backups"}
 	cfg := config.Config{
 		Users:    []config.User{{AccessKey: "GKONE", SecretKey: "secret", Name: "backup", Policy: "none"}},
-		Policies: []config.Policy{{Name: "none"}},
-		Buckets:  []config.Bucket{{Name: "backups"}},
+		Policies: []config.Policy{{Name: "none", Buckets: []config.PolicyBucket{{Name: "backups"}}}},
 	}
 	var logs bytes.Buffer
 	r := newReconciler(api, cfg)
@@ -200,7 +182,6 @@ func TestRunDryRunDoesNotMutateGarage(t *testing.T) {
 	cfg := config.Config{
 		Users:    []config.User{{AccessKey: "GKONE", SecretKey: "secret", Policy: "backup"}},
 		Policies: []config.Policy{{Name: "backup", Buckets: []config.PolicyBucket{{Name: "backups", Write: true}}}},
-		Buckets:  []config.Bucket{{Name: "backups"}},
 	}
 	r := newReconciler(api, cfg)
 	r.DryRun = true

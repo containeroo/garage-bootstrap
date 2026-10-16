@@ -55,7 +55,7 @@ func Run(
 		"configuration loaded",
 		"users", len(cfg.Users),
 		"policies", len(cfg.Policies),
-		"buckets", len(cfg.Buckets),
+		"buckets", len(cfg.Buckets()),
 	)
 
 	client := garage.NewClient(options.AdminURL, options.AdminToken, options.RequestTimeout)

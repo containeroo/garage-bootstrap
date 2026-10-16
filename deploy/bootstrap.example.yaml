@@ -9,6 +9,3 @@ policies:
       - name: db-backups
         read: true
         write: true
-
-buckets:
-  - name: db-backups

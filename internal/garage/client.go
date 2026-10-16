@@ -265,21 +265,6 @@ func (c *Client) AllowBucketKey(ctx context.Context, bucketID, keyID string, per
 	return nil
 }
 
-// DenyBucketKey disables the supplied permissions. False fields are unchanged by Garage.
-func (c *Client) DenyBucketKey(ctx context.Context, bucketID, keyID string, permissions Permissions) error {
-	endpoint := c.endpoint("DenyBucketKey", nil)
-	body := permissionRequest(bucketID, keyID, permissions)
-
-	status, _, err := c.post(ctx, endpoint, body)
-	if err != nil {
-		return err
-	}
-	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		return unexpectedStatus(endpoint, status)
-	}
-	return nil
-}
-
 // createBucketRequest is a CreateBucket request.
 type createBucketRequest struct {
 	GlobalAlias string `json:"globalAlias"`

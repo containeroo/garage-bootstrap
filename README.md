@@ -1,6 +1,6 @@
 # garage-bootstrap
 
-`garage-bootstrap` creates Garage access keys and buckets and applies their permissions through the Garage Admin API. It reconciles once at startup, then serves `GET /healthz` until shutdown. Restart it to apply configuration changes. It does not delete keys or buckets.
+`garage-bootstrap` creates Garage access keys and buckets and grants their permissions through the Garage Admin API. It reconciles once at startup, then serves `GET /healthz` until shutdown. Restart it to apply configuration changes. It never deletes or revokes Garage state.
 
 ## Configuration
 
@@ -23,7 +23,7 @@ garage-bootstrap --admin-url=http://garage-admin:3903 --config=bootstrap.yaml
 
 ### Bootstrap YAML
 
-The bootstrap configuration has three sections: `users`, `policies`, and `buckets`. This resembles MinIO's configuration but uses Garage's native bucket-level `read`, `write`, and `owner` permissions.
+The bootstrap configuration has `users` and `policies`, with Garage's native bucket-level `read`, `write`, and `owner` permissions.
 
 ```yaml
 users:
@@ -37,18 +37,14 @@ policies:
       - name: db-backups
         read: true
         write: true
-
-buckets:
-  - name: db-backups
 ```
 
 - **Users** import an access key with `accessKey` and `secretKey`, or let Garage generate one by supplying `name` instead. Garage-generated secrets must be retrieved separately from Garage. Imported key IDs must be valid for Garage. `allowCreateBucket` is optional and defaults to `false`.
-- **Policies** are reusable: multiple users may reference the same policy. The permissions `read`, `write`, and `owner` default to `false`. Garage's `write` includes deleting objects. These policies exist only in bootstrap; they are not Garage IAM objects.
-- **Buckets** list the global aliases this configuration manages. Policy references must name declared buckets; wildcards are unsupported.
+- **Policies** are reusable: multiple users may reference the same policy. Their bucket entries declare the global aliases to create and their permissions. The permissions `read`, `write`, and `owner` default to `false`. Garage's `write` includes deleting objects. These policies exist only in bootstrap; they are not Garage IAM objects.
 
-For each managed user, permissions on every **declared bucket** match its policy exactly. Omitting a declared bucket from a policy removes that user's permissions on that bucket. Other Garage users and buckets are untouched. Unknown YAML fields, duplicate declarations, and invalid references are rejected.
+Each policy bucket entry creates one grant for every user assigned that policy. Omitting an entry does not revoke existing Garage permissions. Other Garage users, buckets, and permissions are untouched. Unknown YAML fields, duplicate declarations, and invalid bucket names are rejected.
 
-Keep bootstrap YAML private if it contains secrets, and never commit live credentials. Use a dedicated Garage Admin token with the scopes required for your declarations: `ListKeys`, `GetKeyInfo`, `CreateKey`, `ImportKey`, `UpdateKey`, `GetBucketInfo`, `CreateBucket`, `AllowBucketKey`, and `DenyBucketKey`.
+Keep bootstrap YAML private if it contains secrets, and never commit live credentials. Use a dedicated Garage Admin token with the scopes required for your declarations: `ListKeys`, `GetKeyInfo`, `CreateKey`, `ImportKey`, `UpdateKey`, `GetBucketInfo`, `CreateBucket`, and `AllowBucketKey`.
 
 ## Deployment
 

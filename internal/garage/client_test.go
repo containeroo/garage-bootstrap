@@ -317,12 +317,6 @@ func TestClientPostOperationsPropagateHTTPError(t *testing.T) {
 				return c.AllowBucketKey(context.Background(), "bucket", "key", Permissions{Read: true})
 			},
 		},
-		{
-			name: "deny bucket key", path: "/v2/DenyBucketKey",
-			operation: func(c *Client) error {
-				return c.DenyBucketKey(context.Background(), "bucket", "key", Permissions{Read: true})
-			},
-		},
 	}
 
 	for _, tt := range tests {

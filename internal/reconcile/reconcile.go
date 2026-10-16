@@ -23,7 +23,6 @@ type AdminAPI interface {
 	GetBucket(context.Context, string) (*garage.Bucket, error)
 	CreateBucket(context.Context, string) (*garage.Bucket, error)
 	AllowBucketKey(context.Context, string, string, garage.Permissions) error
-	DenyBucketKey(context.Context, string, string, garage.Permissions) error
 }
 
 // Reconciler converges Garage administrative state.
@@ -100,14 +99,15 @@ func (r Reconciler) ensureKeys(ctx context.Context, logger *slog.Logger) (map[st
 
 // ensureBuckets reconciles configured buckets.
 func (r Reconciler) ensureBuckets(ctx context.Context, logger *slog.Logger) (map[string]*garage.Bucket, error) {
-	buckets := make(map[string]*garage.Bucket, len(r.Config.Buckets))
+	declarations := r.Config.Buckets()
+	buckets := make(map[string]*garage.Bucket, len(declarations))
 
-	for _, declaration := range r.Config.Buckets {
+	for _, declaration := range declarations {
 		bucket, err := r.ensureBucket(ctx, declaration, logger)
 		if err != nil {
-			return nil, fmt.Errorf("reconcile bucket %q: %w", declaration.Name, err)
+			return nil, fmt.Errorf("reconcile bucket %q: %w", declaration, err)
 		}
-		buckets[declaration.Name] = bucket
+		buckets[declaration] = bucket
 	}
 
 	return buckets, nil
@@ -283,33 +283,33 @@ func (r Reconciler) listKeys(ctx context.Context, _ string) ([]garage.Key, error
 // ensureBucket reconciles one bucket.
 func (r Reconciler) ensureBucket(
 	ctx context.Context,
-	declaration config.Bucket,
+	declaration string,
 	logger *slog.Logger,
 ) (*garage.Bucket, error) {
-	bucket, err := retry(ctx, r.Logger, "get bucket", declaration.Name, r.API.GetBucket)
+	bucket, err := retry(ctx, r.Logger, "get bucket", declaration, r.API.GetBucket)
 	if err != nil {
 		return nil, err
 	}
 	if bucket != nil {
 		logger.Info(
 			"skipping bucket creation",
-			"name", declaration.Name,
+			"name", declaration,
 			"reason", "already exists",
 		)
 		return bucket, nil
 	}
 	if r.DryRun {
 		logger.Info("would create bucket",
-			"name", declaration.Name,
+			"name", declaration,
 		)
 
 		return &garage.Bucket{}, nil
 	}
 	logger.Info("creating bucket",
-		"name", declaration.Name,
+		"name", declaration,
 	)
 
-	return retry(ctx, r.Logger, "create bucket", declaration.Name, r.API.CreateBucket)
+	return retry(ctx, r.Logger, "create bucket", declaration, r.API.CreateBucket)
 }
 
 // ensureGrant reconciles one grant.
@@ -342,18 +342,9 @@ func (r Reconciler) ensureGrant(
 		"bucket", declaration.Bucket,
 		"key", declaration.User,
 	)
-	allow := desired
-	deny := garage.Permissions{Read: !desired.Read, Write: !desired.Write, Owner: !desired.Owner}
-
-	if allow.Read || allow.Write || allow.Owner {
-		change := grantChange{bucketID: bucket.ID, accessKeyID: key.AccessKeyID, permissions: allow}
+	if desired.Read || desired.Write || desired.Owner {
+		change := grantChange{bucketID: bucket.ID, accessKeyID: key.AccessKeyID, permissions: desired}
 		if err := retryVoid(ctx, r.Logger, "allow bucket key", change, r.allowBucketKey); err != nil {
-			return err
-		}
-	}
-	if deny.Read || deny.Write || deny.Owner {
-		change := grantChange{bucketID: bucket.ID, accessKeyID: key.AccessKeyID, permissions: deny}
-		if err := retryVoid(ctx, r.Logger, "deny bucket key", change, r.denyBucketKey); err != nil {
 			return err
 		}
 	}
@@ -363,11 +354,6 @@ func (r Reconciler) ensureGrant(
 // allowBucketKey applies allowed permissions.
 func (r Reconciler) allowBucketKey(ctx context.Context, change grantChange) error {
 	return r.API.AllowBucketKey(ctx, change.bucketID, change.accessKeyID, change.permissions)
-}
-
-// denyBucketKey applies denied permissions.
-func (r Reconciler) denyBucketKey(ctx context.Context, change grantChange) error {
-	return r.API.DenyBucketKey(ctx, change.bucketID, change.accessKeyID, change.permissions)
 }
 
 // retryable reports whether an error can be retried.

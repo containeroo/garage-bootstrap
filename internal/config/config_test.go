@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoadMinIOStyleConfigAndResolvePolicies(t *testing.T) {
+func TestLoadConfigAndResolvePolicies(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "bootstrap.yaml")
 	data := []byte(`users:
@@ -31,9 +31,6 @@ policies:
     buckets:
       - name: db-backups
         read: true
-buckets:
-  - name: db-backups
-  - name: media
 `)
 	require.NoError(t, os.WriteFile(path, data, 0o600))
 	cfg, err := Load(path)
@@ -44,12 +41,10 @@ buckets:
 
 	assert.Equal(t, []Grant{
 		{User: "GKONE", Bucket: "db-backups", Read: true, Write: true},
-		{User: "GKONE", Bucket: "media"},
 		{User: "GKTWO", Bucket: "db-backups", Read: true, Write: true},
-		{User: "GKTWO", Bucket: "media"},
 		{User: "generated", Bucket: "db-backups", Read: true},
-		{User: "generated", Bucket: "media"},
 	}, cfg.Grants())
+	assert.Equal(t, []string{"db-backups"}, cfg.Buckets())
 }
 
 func TestLoadRejectsInvalidYAML(t *testing.T) {
@@ -63,7 +58,8 @@ func TestLoadRejectsInvalidYAML(t *testing.T) {
 		{"unknown nested field", "policies:\n  - name: p\n    buckets:\n      - name: backup\n        action: true\n", "field action not found"},
 		{"removed top-level grants", "grants: []\n", "field grants not found"},
 		{"removed top-level keys", "keys: []\n", "field keys not found"},
-		{"multiple documents", "users: []\n---\nbuckets: []\n", "multiple YAML documents"},
+		{"removed top-level buckets", "buckets: []\n", "field buckets not found"},
+		{"multiple documents", "users: []\n---\npolicies: []\n", "multiple YAML documents"},
 		{"duplicate YAML property", "users: []\nusers: []\n", "already defined"},
 	}
 	for _, tt := range tests {
@@ -83,7 +79,6 @@ func TestValidateRejectsInvalidDeclarations(t *testing.T) {
 		return Config{
 			Users:    []User{{AccessKey: "GKONE", SecretKey: "secret", Policy: "p"}},
 			Policies: []Policy{{Name: "p", Buckets: []PolicyBucket{{Name: "backups", Read: true}}}},
-			Buckets:  []Bucket{{Name: "backups"}},
 		}
 	}
 	tests := []struct {
@@ -101,13 +96,11 @@ func TestValidateRejectsInvalidDeclarations(t *testing.T) {
 		{"unknown policy", func(c *Config) { c.Users[0].Policy = "missing" }, "unknown policy"},
 		{"duplicate policy", func(c *Config) { c.Policies = append(c.Policies, c.Policies[0]) }, "duplicate name"},
 		{"missing policy name", func(c *Config) { c.Policies[0].Name = "" }, "name is required"},
-		{"unknown bucket", func(c *Config) { c.Policies[0].Buckets[0].Name = "missing" }, "unknown bucket"},
 		{"duplicate policy bucket", func(c *Config) {
 			c.Policies[0].Buckets = append(c.Policies[0].Buckets, PolicyBucket{Name: "backups"})
 		}, "duplicate bucket"},
-		{"duplicate bucket", func(c *Config) { c.Buckets = append(c.Buckets, c.Buckets[0]) }, "duplicate name"},
-		{"missing bucket name", func(c *Config) { c.Buckets[0].Name = "" }, "name is required"},
-		{"invalid bucket", func(c *Config) { c.Buckets[0].Name = "backup-*" }, "invalid bucket name"},
+		{"missing bucket name", func(c *Config) { c.Policies[0].Buckets[0].Name = "" }, "invalid bucket name"},
+		{"invalid bucket", func(c *Config) { c.Policies[0].Buckets[0].Name = "backup-*" }, "invalid bucket name"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -124,8 +117,8 @@ func TestGeneratedUserAndEmptyPolicy(t *testing.T) {
 	cfg := Config{
 		Users:    []User{{Name: "automatically-generated", Policy: "none"}},
 		Policies: []Policy{{Name: "none"}},
-		Buckets:  []Bucket{{Name: "backups"}},
 	}
 	require.NoError(t, cfg.Validate())
-	assert.Equal(t, []Grant{{User: "automatically-generated", Bucket: "backups"}}, cfg.Grants())
+	assert.Empty(t, cfg.Buckets())
+	assert.Empty(t, cfg.Grants())
 }
