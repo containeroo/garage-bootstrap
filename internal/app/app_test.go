@@ -58,13 +58,14 @@ func TestRunReconcilesOnceBeforeServingHealth(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	stderr := &bytes.Buffer{}
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(ctx, "test", []string{
 			"--admin-url", admin.URL,
 			"--config", path,
 			"--listen-address", address,
-		}, &bytes.Buffer{}, &bytes.Buffer{})
+		}, &bytes.Buffer{}, stderr)
 	}()
 
 	healthURL := "http://" + address + "/healthz"
@@ -96,6 +97,10 @@ func TestRunReconcilesOnceBeforeServingHealth(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("server did not shut down")
 	}
+	assert.Contains(t, stderr.String(), "starting garage bootstrap")
+	assert.Contains(t, stderr.String(), "configuration loaded")
+	assert.Contains(t, stderr.String(), "starting reconciliation")
+	assert.Contains(t, stderr.String(), "starting management server")
 }
 
 func TestRunFailsBeforeStartingHealthServer(t *testing.T) {

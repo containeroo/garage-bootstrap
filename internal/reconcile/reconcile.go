@@ -155,7 +155,7 @@ func (r Reconciler) findKey(ctx context.Context, declaration config.User) (*gara
 	if declaration.AccessKey == "" {
 		return r.keyByName(ctx, declaration.KeyName())
 	}
-	return retry(ctx, "get key", declaration.AccessKey, r.API.GetKey)
+	return retry(ctx, r.Logger, "get key", declaration.AccessKey, r.API.GetKey)
 }
 
 // missingKey returns a dry-run key.
@@ -187,13 +187,13 @@ func (r Reconciler) createKey(
 			"name", declaration.KeyName(),
 		)
 
-		return retry(ctx, "create key", declaration.KeyName(), r.API.CreateKey)
+		return retry(ctx, r.Logger, "create key", declaration.KeyName(), r.API.CreateKey)
 	}
 
 	logger.Info("importing access key",
 		"name", declaration.KeyName(),
 	)
-	return retry(ctx, "import key", declaration, r.importKey)
+	return retry(ctx, r.Logger, "import key", declaration, r.importKey)
 }
 
 // importKey imports a configured key.
@@ -222,7 +222,7 @@ func (r Reconciler) updateKey(
 		"name", declaration.KeyName(),
 	)
 	change := keyUpdate{key: key, declaration: declaration}
-	if err := retryVoid(ctx, "update key", change, r.applyKeyUpdate); err != nil {
+	if err := retryVoid(ctx, r.Logger, "update key", change, r.applyKeyUpdate); err != nil {
 		return nil, err
 	}
 
@@ -250,7 +250,7 @@ func (r Reconciler) applyKeyUpdate(ctx context.Context, change keyUpdate) error 
 
 // keyByName finds exactly one named key.
 func (r Reconciler) keyByName(ctx context.Context, name string) (*garage.Key, error) {
-	keys, err := retry(ctx, "list keys", name, r.listKeys)
+	keys, err := retry(ctx, r.Logger, "list keys", name, r.listKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +278,7 @@ func (r Reconciler) ensureBucket(
 	declaration config.Bucket,
 	logger *slog.Logger,
 ) (*garage.Bucket, error) {
-	bucket, err := retry(ctx, "get bucket", declaration.Name, r.API.GetBucket)
+	bucket, err := retry(ctx, r.Logger, "get bucket", declaration.Name, r.API.GetBucket)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +296,7 @@ func (r Reconciler) ensureBucket(
 		"name", declaration.Name,
 	)
 
-	return retry(ctx, "create bucket", declaration.Name, r.API.CreateBucket)
+	return retry(ctx, r.Logger, "create bucket", declaration.Name, r.API.CreateBucket)
 }
 
 // ensureGrant reconciles one grant.
@@ -334,13 +334,13 @@ func (r Reconciler) ensureGrant(
 
 	if allow.Read || allow.Write || allow.Owner {
 		change := grantChange{bucketID: bucket.ID, accessKeyID: key.AccessKeyID, permissions: allow}
-		if err := retryVoid(ctx, "allow bucket key", change, r.allowBucketKey); err != nil {
+		if err := retryVoid(ctx, r.Logger, "allow bucket key", change, r.allowBucketKey); err != nil {
 			return err
 		}
 	}
 	if deny.Read || deny.Write || deny.Owner {
 		change := grantChange{bucketID: bucket.ID, accessKeyID: key.AccessKeyID, permissions: deny}
-		if err := retryVoid(ctx, "deny bucket key", change, r.denyBucketKey); err != nil {
+		if err := retryVoid(ctx, r.Logger, "deny bucket key", change, r.denyBucketKey); err != nil {
 			return err
 		}
 	}
@@ -363,6 +363,7 @@ type retryable interface{ Retryable() bool }
 // retry retries a transient Admin API call until context cancellation.
 func retry[Input, Output any](
 	ctx context.Context,
+	logger *slog.Logger,
 	operation string,
 	input Input,
 	call func(context.Context, Input) (Output, error),
@@ -376,7 +377,15 @@ func retry[Input, Output any](
 		if !isRetryable(err) {
 			return zero, fmt.Errorf("%s: %w", operation, err)
 		}
-		if err := wait(ctx, attempt); err != nil {
+		delay := retryDelay(attempt)
+		logger.Warn(
+			"Garage Admin API request failed; retrying",
+			"operation", operation,
+			"attempt", attempt,
+			"retry_in", delay,
+			"error", err,
+		)
+		if err := wait(ctx, delay); err != nil {
 			return zero, err
 		}
 	}
@@ -385,6 +394,7 @@ func retry[Input, Output any](
 // retryVoid retries a transient Admin API call until context cancellation.
 func retryVoid[Input any](
 	ctx context.Context,
+	logger *slog.Logger,
 	operation string,
 	input Input,
 	call func(context.Context, Input) error,
@@ -397,7 +407,15 @@ func retryVoid[Input any](
 		if !isRetryable(err) {
 			return fmt.Errorf("%s: %w", operation, err)
 		}
-		if err := wait(ctx, attempt); err != nil {
+		delay := retryDelay(attempt)
+		logger.Warn(
+			"Garage Admin API request failed; retrying",
+			"operation", operation,
+			"attempt", attempt,
+			"retry_in", delay,
+			"error", err,
+		)
+		if err := wait(ctx, delay); err != nil {
 			return err
 		}
 	}
@@ -409,9 +427,13 @@ func isRetryable(err error) bool {
 	return errors.As(err, &retriable) && retriable.Retryable()
 }
 
-// wait waits for the next exponential retry interval.
-func wait(ctx context.Context, attempt int) error {
-	delay := backoff.NextInterval(backoff.ModeExponential, 100*time.Millisecond, attempt, time.Second)
+// retryDelay returns the capped exponential delay for attempt.
+func retryDelay(attempt int) time.Duration {
+	return backoff.NextInterval(backoff.ModeExponential, 100*time.Millisecond, attempt, time.Second)
+}
+
+// wait waits for delay or context cancellation.
+func wait(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {

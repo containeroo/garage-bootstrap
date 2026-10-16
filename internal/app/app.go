@@ -36,12 +36,27 @@ func Run(
 
 	logger := appkitlogging.Setup(appkitlogging.LogFormatJSON, false, stderr)
 	setupLogger := logger.With("component", "setup")
+	setupLogger.Info(
+		"starting garage bootstrap",
+		"version", version,
+		"config", options.ConfigPath,
+		"admin_scheme", options.AdminURL.Scheme,
+		"admin_host", options.AdminURL.Host,
+		"dry_run", options.DryRun,
+	)
 
+	setupLogger.Info("loading configuration", "path", options.ConfigPath)
 	cfg, err := config.Load(options.ConfigPath)
 	if err != nil {
 		setupLogger.Error("failed to load configuration", "error", err)
 		return err
 	}
+	setupLogger.Info(
+		"configuration loaded",
+		"users", len(cfg.Users),
+		"policies", len(cfg.Policies),
+		"buckets", len(cfg.Buckets),
+	)
 
 	client := garage.NewClient(options.AdminURL, options.AdminToken, options.RequestTimeout)
 
@@ -55,6 +70,7 @@ func Run(
 		Logger: logger,
 		DryRun: options.DryRun,
 	}
+	setupLogger.Info("starting reconciliation")
 	if err := reconcile.Run(ctx); err != nil {
 		setupLogger.Error("failed to reconcile configuration", "error", err)
 		return err
@@ -64,6 +80,7 @@ func Run(
 
 	// Construct both HTTP handlers and run their listeners until shutdown.
 	handler := server.ManagementHandler()
+	setupLogger.Info("starting management server", "address", options.ListenAddress)
 	if err := grace.Run(ctx, options.ListenAddress, handler, logger); err != nil {
 		setupLogger.Error("failed to serve management API", "error", err)
 		return err
