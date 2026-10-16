@@ -3,6 +3,8 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/gi8lino/garage-bootstrap/internal/config"
@@ -31,6 +33,14 @@ func newFakeAPI() *fakeAPI {
 		keys:        make(map[string]*garage.Key),
 		buckets:     make(map[string]*garage.Bucket),
 		permissions: make(map[permissionKey]garage.Permissions),
+	}
+}
+
+func newReconciler(api *fakeAPI, cfg config.Config) Reconciler {
+	return Reconciler{
+		API:    api,
+		Config: cfg,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 }
 
@@ -136,7 +146,7 @@ func TestRunResolvesSharedPoliciesAndRemovesObsoleteGrants(t *testing.T) {
 		},
 		Buckets: []config.Bucket{{Name: "backups"}, {Name: "media"}},
 	}
-	r := Reconciler{API: api, Config: cfg}
+	r := newReconciler(api, cfg)
 	require.NoError(t, r.Run(context.Background()))
 	assert.Equal(t, 2, api.imported)
 	assert.Equal(t, 1, api.created)
@@ -158,7 +168,7 @@ func TestRunDoesNotCallAPIForInvalidConfig(t *testing.T) {
 	cfg := config.Config{
 		Users: []config.User{{Name: "backup", Policy: "missing"}},
 	}
-	err := (Reconciler{API: api, Config: cfg}).Run(context.Background())
+	err := newReconciler(api, cfg).Run(context.Background())
 	require.ErrorContains(t, err, `unknown policy "missing"`)
 	assert.Zero(t, api.calls)
 }
@@ -171,7 +181,9 @@ func TestRunDryRunDoesNotMutateGarage(t *testing.T) {
 		Policies: []config.Policy{{Name: "backup", Buckets: []config.PolicyBucket{{Name: "backups", Write: true}}}},
 		Buckets:  []config.Bucket{{Name: "backups"}},
 	}
-	require.NoError(t, (Reconciler{API: api, Config: cfg, DryRun: true}).Run(context.Background()))
+	r := newReconciler(api, cfg)
+	r.DryRun = true
+	require.NoError(t, r.Run(context.Background()))
 	assert.Zero(t, api.created)
 	assert.Zero(t, api.imported)
 	assert.Empty(t, api.buckets)

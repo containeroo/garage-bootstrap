@@ -107,7 +107,7 @@ func TestValidateRejectsInvalidDeclarations(t *testing.T) {
 		}, "duplicate bucket"},
 		{"duplicate bucket", func(c *Config) { c.Buckets = append(c.Buckets, c.Buckets[0]) }, "duplicate name"},
 		{"missing bucket name", func(c *Config) { c.Buckets[0].Name = "" }, "name is required"},
-		{"wildcard bucket", func(c *Config) { c.Buckets[0].Name = "backup-*" }, "wildcards are not supported"},
+		{"invalid bucket", func(c *Config) { c.Buckets[0].Name = "backup-*" }, "invalid bucket name"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

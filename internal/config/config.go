@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -133,6 +135,9 @@ func (c Config) validateBuckets() (map[string]struct{}, error) {
 		if bucket.Name == "" {
 			return nil, fmt.Errorf("buckets[%d]: name is required", i)
 		}
+		if !validBucketName(bucket.Name) {
+			return nil, fmt.Errorf("buckets[%d]: invalid bucket name %q", i, bucket.Name)
+		}
 		if _, exists := buckets[bucket.Name]; exists {
 			return nil, fmt.Errorf("buckets[%d]: duplicate name %q", i, bucket.Name)
 		}
@@ -159,6 +164,9 @@ func (c Config) validatePolicies(buckets map[string]struct{}) (map[string]struct
 		seen := make(map[string]struct{}, len(policy.Buckets))
 
 		for j, bucket := range policy.Buckets {
+			if !validBucketName(bucket.Name) {
+				return nil, fmt.Errorf("policies[%d].buckets[%d]: invalid bucket name %q", i, j, bucket.Name)
+			}
 			if _, exists := buckets[bucket.Name]; !exists {
 				return nil, fmt.Errorf("policies[%d].buckets[%d]: unknown bucket %q", i, j, bucket.Name)
 			}
@@ -171,6 +179,25 @@ func (c Config) validatePolicies(buckets map[string]struct{}) (map[string]struct
 	}
 
 	return policies, nil
+}
+
+// validBucketName reports whether name meets Garage's bucket alias rules.
+func validBucketName(name string) bool {
+	if len(name) < 3 || len(name) > 63 || net.ParseIP(name) != nil {
+		return false
+	}
+	if name[0] == '.' || name[0] == '-' || name[len(name)-1] == '.' || name[len(name)-1] == '-' {
+		return false
+	}
+	if strings.HasPrefix(name, "xn--") || strings.Contains(name, ".xn--") || strings.HasSuffix(name, "-s3alias") {
+		return false
+	}
+	for _, character := range name {
+		if character != '.' && character != '-' && (character < 'a' || character > 'z') && (character < '0' || character > '9') {
+			return false
+		}
+	}
+	return true
 }
 
 // validateUsers checks user credentials, uniqueness, and policy references.

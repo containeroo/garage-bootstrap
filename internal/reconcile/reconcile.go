@@ -64,6 +64,9 @@ func (r Reconciler) Run(ctx context.Context) error {
 	if r.API == nil {
 		return errors.New("reconciler API is required")
 	}
+	if r.Logger == nil {
+		return errors.New("reconciler logger is required")
+	}
 
 	logger := r.Logger
 
