@@ -165,6 +165,41 @@ func TestRunLogsSkippedResources(t *testing.T) {
 	assert.Contains(t, logs.String(), "skipping bucket creation")
 }
 
+func TestRunSkipsSatisfiedGrant(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI()
+	api.keys["GKONE"] = &garage.Key{AccessKeyID: "GKONE", Name: "backup"}
+	api.buckets["backups"] = &garage.Bucket{
+		ID: "bucket-backups",
+		Keys: []garage.BucketKey{{
+			AccessKeyID: "GKONE",
+			Permissions: garage.Permissions{
+				Read:  true,
+				Write: true,
+			},
+		}},
+	}
+	cfg := config.Config{
+		Users: []config.User{{AccessKey: "GKONE", SecretKey: "secret", Name: "backup", Policy: "backup"}},
+		Policies: []config.Policy{{
+			Name: "backup",
+			Buckets: []config.PolicyBucket{{
+				Name:  "backups",
+				Read:  true,
+				Write: true,
+			}},
+		}},
+	}
+	var logs bytes.Buffer
+	r := newReconciler(api, cfg)
+	r.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	require.NoError(t, r.Run(context.Background()))
+	assert.Empty(t, api.permissions)
+	assert.Contains(t, logs.String(), "skipping bucket grant")
+}
+
 func TestRunDoesNotCallAPIForInvalidConfig(t *testing.T) {
 	t.Parallel()
 	api := newFakeAPI()

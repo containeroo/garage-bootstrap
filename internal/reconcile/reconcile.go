@@ -325,6 +325,15 @@ func (r Reconciler) ensureGrant(
 		Write: declaration.Write,
 		Owner: declaration.Owner,
 	}
+	if grantSatisfied(bucket, key.AccessKeyID, desired) {
+		logger.Info(
+			"skipping bucket grant",
+			"bucket", declaration.Bucket,
+			"key", declaration.User,
+			"reason", "permissions already granted",
+		)
+		return nil
+	}
 
 	if r.DryRun {
 		logger.Info(
@@ -338,7 +347,7 @@ func (r Reconciler) ensureGrant(
 		return nil
 	}
 
-	logger.Info("reconciling bucket grant",
+	logger.Info("granting bucket permissions",
 		"bucket", declaration.Bucket,
 		"key", declaration.User,
 	)
@@ -349,6 +358,12 @@ func (r Reconciler) ensureGrant(
 		}
 	}
 	return nil
+}
+
+// grantSatisfied reports whether bucket already grants desired permissions to accessKeyID.
+func grantSatisfied(bucket *garage.Bucket, accessKeyID string, desired garage.Permissions) bool {
+	current, found := bucket.KeyPermissions(accessKeyID)
+	return found && (!desired.Read || current.Read) && (!desired.Write || current.Write) && (!desired.Owner || current.Owner)
 }
 
 // allowBucketKey applies allowed permissions.

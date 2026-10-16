@@ -24,7 +24,7 @@ func TestClientUsesAdminAPIAndBearerToken(t *testing.T) {
 			assert.Equal(t, "backups", r.URL.Query().Get("globalAlias"))
 			assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"id":"bucket-id"}`))
+			_, _ = w.Write([]byte(`{"id":"bucket-id","keys":[{"accessKeyId":"key-id","permissions":{"read":true}}]}`))
 		}))
 		defer server.Close()
 
@@ -36,6 +36,9 @@ func TestClientUsesAdminAPIAndBearerToken(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "bucket-id", bucket.ID)
+		permissions, found := bucket.KeyPermissions("key-id")
+		assert.True(t, found)
+		assert.True(t, permissions.Read)
 	})
 
 	t.Run("UpdateKey builds typed request", func(t *testing.T) {

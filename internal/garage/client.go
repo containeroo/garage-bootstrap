@@ -77,6 +77,16 @@ type KeyPermissions struct {
 type Bucket struct {
 	// ID is the Garage bucket ID.
 	ID string `json:"id"`
+	// Keys lists access keys with permissions on the bucket.
+	Keys []BucketKey `json:"keys"`
+}
+
+// BucketKey is an access key's permissions on one bucket.
+type BucketKey struct {
+	// AccessKeyID identifies the access key.
+	AccessKeyID string `json:"accessKeyId"`
+	// Permissions are the access key's bucket permissions.
+	Permissions Permissions `json:"permissions"`
 }
 
 // Permissions are S3 permissions for one key on one bucket.
@@ -87,6 +97,16 @@ type Permissions struct {
 	Write bool `json:"write"`
 	// Owner permits owner operations.
 	Owner bool `json:"owner"`
+}
+
+// KeyPermissions returns permissions for accessKeyID on the bucket.
+func (b *Bucket) KeyPermissions(accessKeyID string) (Permissions, bool) {
+	for _, key := range b.Keys {
+		if key.AccessKeyID == accessKeyID {
+			return key.Permissions, true
+		}
+	}
+	return Permissions{}, false
 }
 
 // GetKey returns the key identified by ID. It returns (nil, nil) for 404.
