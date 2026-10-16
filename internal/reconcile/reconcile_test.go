@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -160,6 +161,26 @@ func TestRunResolvesSharedPoliciesAndRemovesObsoleteGrants(t *testing.T) {
 	require.NoError(t, r.Run(context.Background()))
 	assert.Equal(t, 2, api.imported)
 	assert.Equal(t, 1, api.created)
+}
+
+func TestRunLogsSkippedResources(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI()
+	api.keys["GKONE"] = &garage.Key{AccessKeyID: "GKONE", Name: "backup"}
+	api.buckets["backups"] = &garage.Bucket{ID: "bucket-backups"}
+	cfg := config.Config{
+		Users:    []config.User{{AccessKey: "GKONE", SecretKey: "secret", Name: "backup", Policy: "none"}},
+		Policies: []config.Policy{{Name: "none"}},
+		Buckets:  []config.Bucket{{Name: "backups"}},
+	}
+	var logs bytes.Buffer
+	r := newReconciler(api, cfg)
+	r.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	require.NoError(t, r.Run(context.Background()))
+	assert.Contains(t, logs.String(), "skipping access key")
+	assert.Contains(t, logs.String(), "skipping bucket creation")
 }
 
 func TestRunDoesNotCallAPIForInvalidConfig(t *testing.T) {

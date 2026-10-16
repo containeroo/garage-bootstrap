@@ -80,7 +80,6 @@ func Run(
 
 	// Construct both HTTP handlers and run their listeners until shutdown.
 	handler := server.ManagementHandler()
-	setupLogger.Info("starting management server", "address", options.ListenAddress)
 	if err := grace.Run(ctx, options.ListenAddress, handler, logger); err != nil {
 		setupLogger.Error("failed to serve management API", "error", err)
 		return err

@@ -138,6 +138,14 @@ func (r Reconciler) ensureKey(
 	if err != nil {
 		return nil, err
 	}
+	if key != nil && keyMatchesDeclaration(key, declaration) {
+		logger.Info(
+			"skipping access key",
+			"name", declaration.KeyName(),
+			"reason", "already up to date",
+		)
+		return key, nil
+	}
 	if key == nil {
 		if r.DryRun {
 			return r.missingKey(declaration, logger), nil
@@ -283,6 +291,11 @@ func (r Reconciler) ensureBucket(
 		return nil, err
 	}
 	if bucket != nil {
+		logger.Info(
+			"skipping bucket creation",
+			"name", declaration.Name,
+			"reason", "already exists",
+		)
 		return bucket, nil
 	}
 	if r.DryRun {

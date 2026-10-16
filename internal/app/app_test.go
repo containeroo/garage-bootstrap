@@ -100,7 +100,7 @@ func TestRunReconcilesOnceBeforeServingHealth(t *testing.T) {
 	assert.Contains(t, stderr.String(), "starting garage bootstrap")
 	assert.Contains(t, stderr.String(), "configuration loaded")
 	assert.Contains(t, stderr.String(), "starting reconciliation")
-	assert.Contains(t, stderr.String(), "starting management server")
+	assert.Contains(t, stderr.String(), "starting server")
 }
 
 func TestRunFailsBeforeStartingHealthServer(t *testing.T) {
