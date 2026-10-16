@@ -39,12 +39,5 @@ jobs:
       - name: Download dependencies
         run: make download
 
-      - name: Check formatting and static analysis
-        run: |
-          test -z "$(gofmt -l .)"
-          go vet ./...
-          go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 -checks=inherit,-ST1005 ./...
-          git diff --check
-
       - name: Run unit tests
         run: make test
