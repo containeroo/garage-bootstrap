@@ -1,0 +1,32 @@
+/kumbuka
+/bin/*
+!/bin/dev-tools.mk
+.encrc
+deploy/.envrc
+
+coverage.out
+.DS_Store
+
+/web/dist/
+/node_modules/
+/build/
+
+/plugins/*.kumbukaplugin
+/plugins/.downloaded
+
+# Local development port assignments
+/.dev-ports.json
+/.dev-ports.json.lock
+
+.envrc
+
+# Local ProjectAtlas index and runtime state
+/.projectatlas/
+
+# Local garage-bootstrap builds.
+/bin/garage-bootstrap
+
+# Deployment-local credentials and configuration.
+/deploy/.env
+/deploy/bootstrap.yaml
+/deploy/kubernetes/secret.yaml

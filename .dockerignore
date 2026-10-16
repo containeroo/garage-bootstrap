@@ -1,0 +1,9 @@
+.git
+.projectatlas
+bin
+README.md
+
+# Never send deployment secrets to the Docker build context.
+deploy/.env
+deploy/bootstrap.yaml
+deploy/kubernetes/secret.yaml

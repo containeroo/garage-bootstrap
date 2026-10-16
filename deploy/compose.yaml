@@ -1,0 +1,24 @@
+services:
+  garage-bootstrap:
+    build:
+      context: ..
+    restart: unless-stopped
+    user: "${LOCAL_UID:?Set LOCAL_UID in .env}"
+    command:
+      - --admin-url=http://host.docker.internal:3903
+      - --config=/config/bootstrap.yaml
+    environment:
+      GARAGE_BOOTSTRAP_ADMIN_TOKEN: ${GARAGE_BOOTSTRAP_ADMIN_TOKEN:?Set GARAGE_BOOTSTRAP_ADMIN_TOKEN in .env}
+    volumes:
+      - ./bootstrap.yaml:/config/bootstrap.yaml:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

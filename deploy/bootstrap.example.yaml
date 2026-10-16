@@ -1,0 +1,14 @@
+users:
+  - accessKey: GKEXAMPLEBACKUP
+    secretKey: REPLACE_WITH_SECRET
+    policy: db-backup
+
+policies:
+  - name: db-backup
+    buckets:
+      - name: db-backups
+        read: true
+        write: true
+
+buckets:
+  - name: db-backups

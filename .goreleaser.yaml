@@ -1,0 +1,42 @@
+---
+project_name: garage-bootstrap
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: garage-bootstrap
+    main: ./cmd/garage-bootstrap/main.go
+    binary: garage-bootstrap
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X main.Version={{ .Tag }}
+      - -X main.Commit={{ .FullCommit }}
+
+dockers_v2:
+  - id: garage-bootstrap
+    ids:
+      - garage-bootstrap
+    labels:
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.description: "Wait for TCP, HTTP, and ICMP dependencies to become ready."
+      org.opencontainers.image.licenses: "Apache-2.0"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "https://github.com/containeroo/garage-bootstrap"
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.url: "https://github.com/containeroo/garage-bootstrap"
+      org.opencontainers.image.version: "{{ .Tag }}"
+    dockerfile: Dockerfile.goreleaser
+    images:
+      - ghcr.io/containeroo/garage-bootstrap
+    tags:
+      - "{{ .Tag }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
