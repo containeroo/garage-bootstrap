@@ -33,7 +33,7 @@ spec:
             - --admin-url=http://garage-admin.garage.svc.cluster.local:3903
             - --config=/config/bootstrap.yaml
           env:
-            - name: GARAGE_BOOTSTRAP_ADMIN_TOKEN
+            - name: GARAGE_BOOTSTRAP__ADMIN_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: garage-bootstrap

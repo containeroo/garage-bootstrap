@@ -31,7 +31,7 @@ func Parse(args []string, version string) (Options, error) {
 	var options Options
 	tf := tinyflags.NewFlagSet("garage-bootstrap", tinyflags.ContinueOnError)
 
-	tf.EnvPrefix("GARAGE_BOOTSTRAP")
+	tf.EnvPrefix("GARAGE_BOOTSTRAP_")
 	tf.Description("Reconcile Garage resources once and serve health checks until shutdown.")
 	tf.Version(version)
 

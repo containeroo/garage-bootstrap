@@ -8,7 +8,7 @@ services:
       - --admin-url=http://host.docker.internal:3903
       - --config=/config/bootstrap.yaml
     environment:
-      GARAGE_BOOTSTRAP_ADMIN_TOKEN: ${GARAGE_BOOTSTRAP_ADMIN_TOKEN:?Set GARAGE_BOOTSTRAP_ADMIN_TOKEN in .env}
+      GARAGE_BOOTSTRAP__ADMIN_TOKEN: ${GARAGE_BOOTSTRAP__ADMIN_TOKEN:?Set GARAGE_BOOTSTRAP__ADMIN_TOKEN in .env}
     volumes:
       - ./bootstrap.yaml:/config/bootstrap.yaml:ro
     ports:
