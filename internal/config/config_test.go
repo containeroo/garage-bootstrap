@@ -11,8 +11,8 @@ import (
 
 func TestLoadConfigAndResolvePolicies(t *testing.T) {
 	t.Parallel()
-	path := filepath.Join(t.TempDir(), "bootstrap.yaml")
-	data := []byte(`users:
+
+	data := `users:
   - accessKey: GKONE
     secretKey: secret-one
     policy: cnpg
@@ -31,94 +31,257 @@ policies:
     buckets:
       - name: db-backups
         read: true
-`)
-	require.NoError(t, os.WriteFile(path, data, 0o600))
-	cfg, err := Load(path)
+`
+
+	cfg, err := loadTestConfig(t, data)
+
 	require.NoError(t, err)
 	require.Len(t, cfg.Users, 3)
 	assert.Equal(t, "GKONE", cfg.Users[0].KeyName())
 	assert.Equal(t, "generated", cfg.Users[2].KeyName())
-
 	assert.Equal(t, []Grant{
-		{User: "GKONE", Bucket: "db-backups", Read: true, Write: true},
-		{User: "GKTWO", Bucket: "db-backups", Read: true, Write: true},
-		{User: "generated", Bucket: "db-backups", Read: true},
+		{
+			User:   "GKONE",
+			Bucket: "db-backups",
+			Read:   true,
+			Write:  true,
+		},
+		{
+			User:   "GKTWO",
+			Bucket: "db-backups",
+			Read:   true,
+			Write:  true,
+		},
+		{
+			User:   "generated",
+			Bucket: "db-backups",
+			Read:   true,
+		},
 	}, cfg.Grants())
 	assert.Equal(t, []string{"db-backups"}, cfg.Buckets())
 }
 
 func TestLoadRejectsInvalidYAML(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name string
-		yaml string
-		want string
-	}{
-		{"unknown field", "users:\n  - name: backup\n    unknown: true\n", "field unknown not found"},
-		{"unknown nested field", "policies:\n  - name: p\n    buckets:\n      - name: backup\n        action: true\n", "field action not found"},
-		{"removed top-level grants", "grants: []\n", "field grants not found"},
-		{"removed top-level keys", "keys: []\n", "field keys not found"},
-		{"removed top-level buckets", "buckets: []\n", "field buckets not found"},
-		{"multiple documents", "users: []\n---\npolicies: []\n", "multiple YAML documents"},
-		{"duplicate YAML property", "users: []\nusers: []\n", "already defined"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			path := filepath.Join(t.TempDir(), "bootstrap.yaml")
-			require.NoError(t, os.WriteFile(path, []byte(tt.yaml), 0o600))
-			_, err := Load(path)
-			require.ErrorContains(t, err, tt.want)
-		})
-	}
+
+	t.Run("unknown user field", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := loadTestConfig(t, "users:\n  - name: backup\n    unknown: true\n")
+
+		require.ErrorContains(t, err, "field unknown not found")
+	})
+
+	t.Run("unknown policy bucket field", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := loadTestConfig(t, "policies:\n  - name: p\n    buckets:\n      - name: backup\n        action: true\n")
+
+		require.ErrorContains(t, err, "field action not found")
+	})
+
+	t.Run("top-level grants are not supported", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := loadTestConfig(t, "grants: []\n")
+
+		require.ErrorContains(t, err, "field grants not found")
+	})
+
+	t.Run("top-level keys are not supported", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := loadTestConfig(t, "keys: []\n")
+
+		require.ErrorContains(t, err, "field keys not found")
+	})
+
+	t.Run("top-level buckets are not supported", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := loadTestConfig(t, "buckets: []\n")
+
+		require.ErrorContains(t, err, "field buckets not found")
+	})
+
+	t.Run("multiple documents", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := loadTestConfig(t, "users: []\n---\npolicies: []\n")
+
+		require.ErrorContains(t, err, "expected single document, found multiple")
+	})
+
+	t.Run("duplicate YAML property", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := loadTestConfig(t, "users: []\nusers: []\n")
+
+		require.ErrorContains(t, err, "already defined")
+	})
 }
 
 func TestValidateRejectsInvalidDeclarations(t *testing.T) {
 	t.Parallel()
-	valid := func() Config {
-		return Config{
-			Users:    []User{{AccessKey: "GKONE", SecretKey: "secret", Policy: "p"}},
-			Policies: []Policy{{Name: "p", Buckets: []PolicyBucket{{Name: "backups", Read: true}}}},
-		}
-	}
-	tests := []struct {
-		name string
-		edit func(*Config)
-		want string
-	}{
-		{"duplicate user", func(c *Config) { c.Users = append(c.Users, c.Users[0]) }, "duplicate name"},
-		{"duplicate access key with separate name", func(c *Config) {
-			c.Users = append(c.Users, User{Name: "second", AccessKey: "GKONE", SecretKey: "different", Policy: "p"})
-		}, "duplicate accessKey"},
-		{"missing secret", func(c *Config) { c.Users[0].SecretKey = "" }, "must be provided together"},
-		{"missing access key", func(c *Config) { c.Users[0].AccessKey = "" }, "must be provided together"},
-		{"generated user without name", func(c *Config) { c.Users[0].AccessKey, c.Users[0].SecretKey = "", "" }, "name is required"},
-		{"unknown policy", func(c *Config) { c.Users[0].Policy = "missing" }, "unknown policy"},
-		{"duplicate policy", func(c *Config) { c.Policies = append(c.Policies, c.Policies[0]) }, "duplicate name"},
-		{"missing policy name", func(c *Config) { c.Policies[0].Name = "" }, "name is required"},
-		{"duplicate policy bucket", func(c *Config) {
-			c.Policies[0].Buckets = append(c.Policies[0].Buckets, PolicyBucket{Name: "backups"})
-		}, "duplicate bucket"},
-		{"missing bucket name", func(c *Config) { c.Policies[0].Buckets[0].Name = "" }, "invalid bucket name"},
-		{"invalid bucket", func(c *Config) { c.Policies[0].Buckets[0].Name = "backup-*" }, "invalid bucket name"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			cfg := valid()
-			tt.edit(&cfg)
-			assert.ErrorContains(t, cfg.Validate(), tt.want)
+
+	t.Run("duplicate user", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validTestConfig()
+		cfg.Users = append(cfg.Users, cfg.Users[0])
+
+		assert.ErrorContains(t, cfg.Validate(), "duplicate name")
+	})
+
+	t.Run("duplicate access key with a different name", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validTestConfig()
+		cfg.Users = append(cfg.Users, User{
+			Name:      "second",
+			AccessKey: "GKONE",
+			SecretKey: "different",
+			Policy:    "p",
 		})
-	}
+
+		assert.ErrorContains(t, cfg.Validate(), "duplicate accessKey")
+	})
+
+	t.Run("missing secret", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validTestConfig()
+		cfg.Users[0].SecretKey = ""
+
+		assert.ErrorContains(t, cfg.Validate(), "must be provided together")
+	})
+
+	t.Run("missing access key", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validTestConfig()
+		cfg.Users[0].AccessKey = ""
+
+		assert.ErrorContains(t, cfg.Validate(), "must be provided together")
+	})
+
+	t.Run("generated user without name", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validTestConfig()
+		cfg.Users[0].AccessKey = ""
+		cfg.Users[0].SecretKey = ""
+
+		assert.ErrorContains(t, cfg.Validate(), "name is required")
+	})
+
+	t.Run("unknown policy", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validTestConfig()
+		cfg.Users[0].Policy = "missing"
+
+		assert.ErrorContains(t, cfg.Validate(), "unknown policy")
+	})
+
+	t.Run("duplicate policy", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validTestConfig()
+		cfg.Policies = append(cfg.Policies, cfg.Policies[0])
+
+		assert.ErrorContains(t, cfg.Validate(), "duplicate name")
+	})
+
+	t.Run("missing policy name", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validTestConfig()
+		cfg.Policies[0].Name = ""
+
+		assert.ErrorContains(t, cfg.Validate(), "name is required")
+	})
+
+	t.Run("duplicate policy bucket", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validTestConfig()
+		cfg.Policies[0].Buckets = append(cfg.Policies[0].Buckets, PolicyBucket{
+			Name: "backups",
+		})
+
+		assert.ErrorContains(t, cfg.Validate(), "duplicate bucket")
+	})
+
+	t.Run("missing bucket name", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validTestConfig()
+		cfg.Policies[0].Buckets[0].Name = ""
+
+		assert.ErrorContains(t, cfg.Validate(), "invalid bucket name")
+	})
+
+	t.Run("invalid bucket name", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validTestConfig()
+		cfg.Policies[0].Buckets[0].Name = "backup-*"
+
+		assert.ErrorContains(t, cfg.Validate(), "invalid bucket name")
+	})
 }
 
 func TestGeneratedUserAndEmptyPolicy(t *testing.T) {
 	t.Parallel()
+
 	cfg := Config{
-		Users:    []User{{Name: "automatically-generated", Policy: "none"}},
-		Policies: []Policy{{Name: "none"}},
+		Users: []User{
+			{
+				Name:   "automatically-generated",
+				Policy: "none",
+			},
+		},
+		Policies: []Policy{
+			{Name: "none"},
+		},
 	}
+
 	require.NoError(t, cfg.Validate())
 	assert.Empty(t, cfg.Buckets())
 	assert.Empty(t, cfg.Grants())
+}
+
+// loadTestConfig writes and loads one isolated YAML document.
+func loadTestConfig(t *testing.T, content string) (Config, error) {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "bootstrap.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	return Load(path)
+}
+
+// validTestConfig returns an independent starting point for validation tests.
+func validTestConfig() Config {
+	return Config{
+		Users: []User{
+			{
+				AccessKey: "GKONE",
+				SecretKey: "secret",
+				Policy:    "p",
+			},
+		},
+		Policies: []Policy{
+			{
+				Name: "p",
+				Buckets: []PolicyBucket{
+					{
+						Name: "backups",
+						Read: true,
+					},
+				},
+			},
+		},
+	}
 }

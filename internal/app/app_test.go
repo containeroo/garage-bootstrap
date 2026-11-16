@@ -19,26 +19,48 @@ import (
 
 func TestManagementHandler(t *testing.T) {
 	t.Parallel()
-	handler := server.ManagementHandler()
-	for _, test := range []struct {
-		method string
-		path   string
-		want   int
-	}{
-		{http.MethodGet, "/healthz", http.StatusOK},
-		{http.MethodPost, "/healthz", http.StatusMethodNotAllowed},
-		{http.MethodGet, "/missing", http.StatusNotFound},
-	} {
+
+	t.Run("GET healthz", func(t *testing.T) {
+		t.Parallel()
+
+		handler := server.ManagementHandler()
 		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, httptest.NewRequest(test.method, test.path, nil))
-		assert.Equal(t, test.want, recorder.Code)
-		if test.want == http.StatusOK {
-			assert.Equal(t, "ok\n", recorder.Body.String())
-		}
-	}
+		request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+
+		handler.ServeHTTP(recorder, request)
+
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, "ok\n", recorder.Body.String())
+	})
+
+	t.Run("POST healthz", func(t *testing.T) {
+		t.Parallel()
+
+		handler := server.ManagementHandler()
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/healthz", nil)
+
+		handler.ServeHTTP(recorder, request)
+
+		assert.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+	})
+
+	t.Run("unknown path", func(t *testing.T) {
+		t.Parallel()
+
+		handler := server.ManagementHandler()
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/missing", nil)
+
+		handler.ServeHTTP(recorder, request)
+
+		assert.Equal(t, http.StatusNotFound, recorder.Code)
+	})
 }
 
 func TestRunReconcilesOnceBeforeServingHealth(t *testing.T) {
+	t.Parallel()
+
 	var calls atomic.Int32
 	admin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -104,6 +126,8 @@ func TestRunReconcilesOnceBeforeServingHealth(t *testing.T) {
 }
 
 func TestRunFailsBeforeStartingHealthServer(t *testing.T) {
+	t.Parallel()
+
 	admin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))

@@ -14,19 +14,31 @@ func TestNextInterval(t *testing.T) {
 		t.Parallel()
 
 		base := 100 * time.Millisecond
-		interval := NextInterval(ModeExponential, base, 3, time.Second)
-		expected := 400 * time.Millisecond
 
-		assert.Equal(t, expected, interval)
+		interval := NextInterval(ModeLinear, base, 3, time.Second)
+
+		assert.Equal(t, base, interval)
 	})
 
 	t.Run("exponential", func(t *testing.T) {
 		t.Parallel()
 
 		base := 100 * time.Millisecond
-		interval := NextInterval(ModeExponential, base, 8, 500*time.Millisecond)
-		expected := 500 * time.Millisecond
+		expected := 400 * time.Millisecond
+
+		interval := NextInterval(ModeExponential, base, 3, time.Second)
 
 		assert.Equal(t, expected, interval)
+	})
+
+	t.Run("exponential capped", func(t *testing.T) {
+		t.Parallel()
+
+		base := 100 * time.Millisecond
+		limit := 500 * time.Millisecond
+
+		interval := NextInterval(ModeExponential, base, 8, limit)
+
+		assert.Equal(t, limit, interval)
 	})
 }

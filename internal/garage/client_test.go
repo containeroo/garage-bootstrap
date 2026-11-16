@@ -66,24 +66,24 @@ func TestClientUsesAdminAPIAndBearerToken(t *testing.T) {
 func TestClientLookupsHandleNotFound(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte("not JSON"))
-	}))
-	t.Cleanup(server.Close)
-
-	adminURL, err := url.Parse(server.URL)
-	require.NoError(t, err)
-	client := NewClient(adminURL, "", time.Second)
-
 	t.Run("GetKey", func(t *testing.T) {
+		t.Parallel()
+
+		client := statusClient(t, http.MethodGet, "/v2/GetKeyInfo", http.StatusNotFound)
+
 		key, err := client.GetKey(context.Background(), "missing-key")
+
 		require.NoError(t, err)
 		assert.Nil(t, key)
 	})
 
 	t.Run("GetBucket", func(t *testing.T) {
+		t.Parallel()
+
+		client := statusClient(t, http.MethodGet, "/v2/GetBucketInfo", http.StatusNotFound)
+
 		bucket, err := client.GetBucket(context.Background(), "missing-bucket")
+
 		require.NoError(t, err)
 		assert.Nil(t, bucket)
 	})
@@ -92,42 +92,49 @@ func TestClientLookupsHandleNotFound(t *testing.T) {
 func TestClientListKeysPropagatesHTTPError(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name      string
-		status    int
-		retryable bool
-	}{
-		{name: "not found", status: http.StatusNotFound},
-		{name: "forbidden", status: http.StatusForbidden},
-		{name: "rate limited", status: http.StatusTooManyRequests, retryable: true},
-		{name: "server error", status: http.StatusInternalServerError, retryable: true},
-	}
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+		client := statusClient(t, http.MethodGet, "/v2/ListKeys", http.StatusNotFound)
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "/v2/ListKeys", r.URL.Path)
-				w.WriteHeader(tt.status)
-				_, _ = w.Write([]byte("not JSON"))
-			}))
-			t.Cleanup(server.Close)
+		keys, err := client.ListKeys(context.Background())
 
-			adminURL, err := url.Parse(server.URL)
-			require.NoError(t, err)
-			client := NewClient(adminURL, "", time.Second)
+		assert.Nil(t, keys)
+		assertAPIError(t, err, "/v2/ListKeys", http.StatusNotFound, false)
+	})
 
-			keys, err := client.ListKeys(context.Background())
-			assert.Nil(t, keys)
+	t.Run("forbidden", func(t *testing.T) {
+		t.Parallel()
 
-			var apiErr *APIError
-			require.ErrorAs(t, err, &apiErr)
-			assert.Equal(t, "/v2/ListKeys", apiErr.Endpoint)
-			assert.Equal(t, tt.status, apiErr.Status)
-			assert.Equal(t, tt.retryable, apiErr.Retryable())
-		})
-	}
+		client := statusClient(t, http.MethodGet, "/v2/ListKeys", http.StatusForbidden)
+
+		keys, err := client.ListKeys(context.Background())
+
+		assert.Nil(t, keys)
+		assertAPIError(t, err, "/v2/ListKeys", http.StatusForbidden, false)
+	})
+
+	t.Run("rate limited", func(t *testing.T) {
+		t.Parallel()
+
+		client := statusClient(t, http.MethodGet, "/v2/ListKeys", http.StatusTooManyRequests)
+
+		keys, err := client.ListKeys(context.Background())
+
+		assert.Nil(t, keys)
+		assertAPIError(t, err, "/v2/ListKeys", http.StatusTooManyRequests, true)
+	})
+
+	t.Run("server error", func(t *testing.T) {
+		t.Parallel()
+
+		client := statusClient(t, http.MethodGet, "/v2/ListKeys", http.StatusInternalServerError)
+
+		keys, err := client.ListKeys(context.Background())
+
+		assert.Nil(t, keys)
+		assertAPIError(t, err, "/v2/ListKeys", http.StatusInternalServerError, true)
+	})
 }
 
 func TestAPIErrorRetryable(t *testing.T) {
@@ -139,26 +146,27 @@ func TestAPIErrorRetryable(t *testing.T) {
 func TestClientLookupsPropagateOtherErrors(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	t.Cleanup(server.Close)
+	t.Run("GetKey", func(t *testing.T) {
+		t.Parallel()
 
-	adminURL, err := url.Parse(server.URL)
-	require.NoError(t, err)
-	client := NewClient(adminURL, "", time.Second)
+		client := statusClient(t, http.MethodGet, "/v2/GetKeyInfo", http.StatusInternalServerError)
 
-	key, err := client.GetKey(context.Background(), "key")
-	assert.Nil(t, key)
-	var keyErr *APIError
-	require.ErrorAs(t, err, &keyErr)
-	assert.Equal(t, http.StatusInternalServerError, keyErr.Status)
+		key, err := client.GetKey(context.Background(), "key")
 
-	bucket, err := client.GetBucket(context.Background(), "bucket")
-	assert.Nil(t, bucket)
-	var bucketErr *APIError
-	require.ErrorAs(t, err, &bucketErr)
-	assert.Equal(t, http.StatusInternalServerError, bucketErr.Status)
+		assert.Nil(t, key)
+		assertAPIError(t, err, "/v2/GetKeyInfo", http.StatusInternalServerError, true)
+	})
+
+	t.Run("GetBucket", func(t *testing.T) {
+		t.Parallel()
+
+		client := statusClient(t, http.MethodGet, "/v2/GetBucketInfo", http.StatusInternalServerError)
+
+		bucket, err := client.GetBucket(context.Background(), "bucket")
+
+		assert.Nil(t, bucket)
+		assertAPIError(t, err, "/v2/GetBucketInfo", http.StatusInternalServerError, true)
+	})
 }
 
 func TestClientCreateKeyDoesNotIgnoreNotFound(t *testing.T) {
@@ -282,67 +290,82 @@ func TestClientSuccessStatusesAndJSONDecoding(t *testing.T) {
 func TestClientPostOperationsPropagateHTTPError(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name      string
-		path      string
-		operation func(*Client) error
-	}{
-		{
-			name: "import key", path: "/v2/ImportKey",
-			operation: func(c *Client) error {
-				_, err := c.ImportKey(context.Background(), "id", "secret", "name")
-				return err
-			},
-		},
-		{
-			name: "create key", path: "/v2/CreateKey",
-			operation: func(c *Client) error {
-				_, err := c.CreateKey(context.Background(), "name")
-				return err
-			},
-		},
-		{
-			name: "update key", path: "/v2/UpdateKey",
-			operation: func(c *Client) error {
-				return c.UpdateKey(context.Background(), "id", "name", false)
-			},
-		},
-		{
-			name: "create bucket", path: "/v2/CreateBucket",
-			operation: func(c *Client) error {
-				_, err := c.CreateBucket(context.Background(), "name")
-				return err
-			},
-		},
-		{
-			name: "allow bucket key", path: "/v2/AllowBucketKey",
-			operation: func(c *Client) error {
-				return c.AllowBucketKey(context.Background(), "bucket", "key", Permissions{Read: true})
-			},
-		},
-	}
+	t.Run("import key", func(t *testing.T) {
+		t.Parallel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+		client := statusClient(t, http.MethodPost, "/v2/ImportKey", http.StatusTooManyRequests)
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, tt.path, r.URL.Path)
-				assert.Equal(t, http.MethodPost, r.Method)
-				w.WriteHeader(http.StatusTooManyRequests)
-				_, _ = w.Write([]byte("not JSON"))
-			}))
-			t.Cleanup(server.Close)
+		_, err := client.ImportKey(context.Background(), "id", "secret", "name")
 
-			adminURL, err := url.Parse(server.URL)
-			require.NoError(t, err)
-			client := NewClient(adminURL, "", time.Second)
+		assertAPIError(t, err, "/v2/ImportKey", http.StatusTooManyRequests, true)
+	})
 
-			var apiErr *APIError
-			require.ErrorAs(t, tt.operation(client), &apiErr)
-			assert.Equal(t, tt.path, apiErr.Endpoint)
-			assert.Equal(t, http.StatusTooManyRequests, apiErr.Status)
-			assert.True(t, apiErr.Retryable())
-		})
-	}
+	t.Run("create key", func(t *testing.T) {
+		t.Parallel()
+
+		client := statusClient(t, http.MethodPost, "/v2/CreateKey", http.StatusTooManyRequests)
+
+		_, err := client.CreateKey(context.Background(), "name")
+
+		assertAPIError(t, err, "/v2/CreateKey", http.StatusTooManyRequests, true)
+	})
+
+	t.Run("update key", func(t *testing.T) {
+		t.Parallel()
+
+		client := statusClient(t, http.MethodPost, "/v2/UpdateKey", http.StatusTooManyRequests)
+
+		err := client.UpdateKey(context.Background(), "id", "name", false)
+
+		assertAPIError(t, err, "/v2/UpdateKey", http.StatusTooManyRequests, true)
+	})
+
+	t.Run("create bucket", func(t *testing.T) {
+		t.Parallel()
+
+		client := statusClient(t, http.MethodPost, "/v2/CreateBucket", http.StatusTooManyRequests)
+
+		_, err := client.CreateBucket(context.Background(), "name")
+
+		assertAPIError(t, err, "/v2/CreateBucket", http.StatusTooManyRequests, true)
+	})
+
+	t.Run("allow bucket key", func(t *testing.T) {
+		t.Parallel()
+
+		client := statusClient(t, http.MethodPost, "/v2/AllowBucketKey", http.StatusTooManyRequests)
+
+		err := client.AllowBucketKey(context.Background(), "bucket", "key", Permissions{Read: true})
+
+		assertAPIError(t, err, "/v2/AllowBucketKey", http.StatusTooManyRequests, true)
+	})
+}
+
+// statusClient returns an isolated client backed by a server with a fixed status.
+func statusClient(t *testing.T, method, path string, status int) *Client {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, method, r.Method)
+		assert.Equal(t, path, r.URL.Path)
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte("not JSON"))
+	}))
+	t.Cleanup(server.Close)
+
+	adminURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+
+	return NewClient(adminURL, "", time.Second)
+}
+
+// assertAPIError checks the HTTP status, endpoint, and retry classification.
+func assertAPIError(t *testing.T, err error, path string, status int, retryable bool) {
+	t.Helper()
+
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, path, apiErr.Endpoint)
+	assert.Equal(t, status, apiErr.Status)
+	assert.Equal(t, retryable, apiErr.Retryable())
 }
