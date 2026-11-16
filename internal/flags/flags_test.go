@@ -19,7 +19,7 @@ func TestParse(t *testing.T) {
 		options, err := Parse(args, "test")
 		require.NoError(t, err)
 		assert.Equal(t, "https://garage.example", options.AdminURL.String())
-		assert.Equal(t, ":8080", options.ListenAddress)
+		assert.Equal(t, "127.0.0.1:8080", options.ListenAddress)
 	})
 
 	t.Run("custom listen address", func(t *testing.T) {
