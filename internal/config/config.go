@@ -2,14 +2,12 @@
 package config
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strings"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // Config declares the Garage resources and their desired access policies.
@@ -76,31 +74,22 @@ type Grant struct {
 	Owner bool
 }
 
-// Load parses a single YAML document and validates all references before use.
+// Load parses and validates a single YAML configuration document.
 func Load(path string) (Config, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("open configuration: %w", err)
+		return Config{}, fmt.Errorf("read configuration: %w", err)
 	}
-	defer f.Close() // nolint:errcheck
 
 	var cfg Config
-	decoder := yaml.NewDecoder(f)
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&cfg); err != nil {
+	if err := yaml.Load(data, &cfg, yaml.WithKnownFields()); err != nil {
 		return Config{}, fmt.Errorf("decode configuration: %w", err)
 	}
 
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err == nil {
-			return Config{}, errors.New("decode configuration: multiple YAML documents are not supported")
-		}
-		return Config{}, fmt.Errorf("decode configuration: %w", err)
-	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
+
 	return cfg, nil
 }
 
