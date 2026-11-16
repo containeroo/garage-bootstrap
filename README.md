@@ -6,14 +6,14 @@
 
 Garage-bootstrap can be configured using command-line flags or environment variables. Environment variables use the `GARAGE_BOOTSTRAP_` prefix.
 
-| Flag                | Environment variable               | Default  |
-| ------------------- | ---------------------------------- | -------- |
-| `--admin-url`       | `GARAGE_BOOTSTRAP_ADMIN_URL`       | Required |
-| `--config`          | `GARAGE_BOOTSTRAP_CONFIG`          | Required |
-| `--admin-token`     | `GARAGE_BOOTSTRAP_ADMIN_TOKEN`     | Empty    |
-| `--request-timeout` | `GARAGE_BOOTSTRAP_REQUEST_TIMEOUT` | `10s`    |
-| `--listen-address`  | `GARAGE_BOOTSTRAP_LISTEN_ADDRESS`  | `:8080`  |
-| `--dry-run`         | `GARAGE_BOOTSTRAP_DRY_RUN`         | `false`  |
+| Flag                | Environment variable               | Default          |
+| ------------------- | ---------------------------------- | ---------------- |
+| `--admin-url`       | `GARAGE_BOOTSTRAP_ADMIN_URL`       | Required         |
+| `--config`          | `GARAGE_BOOTSTRAP_CONFIG`          | Required         |
+| `--admin-token`     | `GARAGE_BOOTSTRAP_ADMIN_TOKEN`     | Empty            |
+| `--request-timeout` | `GARAGE_BOOTSTRAP_REQUEST_TIMEOUT` | `10s`            |
+| `--listen-address`  | `GARAGE_BOOTSTRAP_LISTEN_ADDRESS`  | `127.0.0.1:8080` |
+| `--dry-run`         | `GARAGE_BOOTSTRAP_DRY_RUN`         | `false`          |
 
 The `--admin-url` points to Garage's **Admin API**, not the S3 endpoint. Pass the Admin token through an environment variable or secret, rather than putting it on a command line.
 

@@ -51,7 +51,10 @@ COPY --from=prep /workspace/garage-bootstrap /garage-bootstrap
 COPY --from=prep /outfs/work /work
 COPY --from=prep /outfs/tmp /tmp
 
-ENV HOME=/tmp
+
+ENV HOME=/tmp \
+  GARAGE_BOOTSTRAP__LISTEN_ADDRESS=:8080
+
 WORKDIR /work
 
 # Run as a non-root user by default.

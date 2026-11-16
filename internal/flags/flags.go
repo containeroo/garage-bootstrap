@@ -51,7 +51,7 @@ func Parse(args []string, version string) (Options, error) {
 		Validate(tinyflags.Positive[time.Duration]()).
 		Value()
 
-	listenAddr := tf.TCPAddr("listen-address", &net.TCPAddr{Port: 8080}, "address for the health HTTP server").
+	listenAddr := tf.TCPAddr("listen-address", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}, "address for the health HTTP server").
 		Value()
 
 	tf.BoolVar(&options.DryRun, "dry-run", false, "log changes without applying them")
