@@ -10,8 +10,8 @@ import (
 	"github.com/containeroo/httpkit/grace"
 	"github.com/containeroo/tinyflags"
 
+	"github.com/gi8lino/garage-bootstrap/internal/cli"
 	"github.com/gi8lino/garage-bootstrap/internal/config"
-	"github.com/gi8lino/garage-bootstrap/internal/flags"
 	"github.com/gi8lino/garage-bootstrap/internal/garage"
 	"github.com/gi8lino/garage-bootstrap/internal/reconcile"
 	"github.com/gi8lino/garage-bootstrap/internal/server"
@@ -24,7 +24,7 @@ func Run(
 	args []string,
 	stdout, stderr io.Writer,
 ) error {
-	options, err := flags.Parse(args, version)
+	flags, err := cli.Parse(args, version)
 	if err != nil {
 		if tinyflags.IsHelpRequested(err) || tinyflags.IsVersionRequested(err) {
 			_, _ = fmt.Fprint(stdout, err)
@@ -39,14 +39,14 @@ func Run(
 	setupLogger.Info(
 		"starting garage bootstrap",
 		"version", version,
-		"config", options.ConfigPath,
-		"admin_scheme", options.AdminURL.Scheme,
-		"admin_host", options.AdminURL.Host,
-		"dry_run", options.DryRun,
+		"config", flags.ConfigPath,
+		"admin_scheme", flags.AdminURL.Scheme,
+		"admin_host", flags.AdminURL.Host,
+		"dry_run", flags.DryRun,
 	)
 
-	setupLogger.Info("loading configuration", "path", options.ConfigPath)
-	cfg, err := config.Load(options.ConfigPath)
+	setupLogger.Info("loading configuration", "path", flags.ConfigPath)
+	cfg, err := config.Load(flags.ConfigPath)
 	if err != nil {
 		setupLogger.Error("failed to load configuration", "error", err)
 		return err
@@ -58,7 +58,7 @@ func Run(
 		"buckets", len(cfg.Buckets()),
 	)
 
-	client := garage.NewClient(options.AdminURL, options.AdminToken, options.RequestTimeout)
+	client := garage.NewClient(flags.AdminURL, flags.AdminToken, flags.RequestTimeout)
 
 	// Use one process-lifetime context for reconciliation and graceful shutdown.
 	ctx, stop := grace.SignalContext(ctx)
@@ -68,7 +68,7 @@ func Run(
 		API:    client,
 		Config: cfg,
 		Logger: logger,
-		DryRun: options.DryRun,
+		DryRun: flags.DryRun,
 	}
 	setupLogger.Info("starting reconciliation")
 	if err := reconcile.Run(ctx); err != nil {
@@ -80,7 +80,7 @@ func Run(
 
 	// Construct both HTTP handlers and run their listeners until shutdown.
 	handler := server.ManagementHandler()
-	if err := grace.Run(ctx, options.ListenAddress, handler, logger); err != nil {
+	if err := grace.Run(ctx, flags.ListenAddress, handler, logger); err != nil {
 		setupLogger.Error("failed to serve management API", "error", err)
 		return err
 	}
